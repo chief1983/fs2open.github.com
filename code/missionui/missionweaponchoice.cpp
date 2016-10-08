@@ -754,7 +754,12 @@ void wl_render_overhead_view(float frametime)
 		{
 			if (wl_ship->model_num < 0)
 			{
-				wl_ship->model_num = model_load(sip->pof_file, sip->n_subsystems, &sip->subsystems[0]);
+				if (sip->pof_file_tech[0] != '\0') {
+					wl_ship->model_num = model_load(sip->pof_file_tech, sip->n_subsystems, &sip->subsystems[0]);
+				}
+				else {
+					wl_ship->model_num = model_load(sip->pof_file, sip->n_subsystems, &sip->subsystems[0]);
+				}
 				model_page_in_textures(wl_ship->model_num, ship_class);
 			}
 
@@ -822,13 +827,18 @@ void wl_render_overhead_view(float frametime)
 		// Load the necessary model file, if necessary
 		if (wl_ship->model_num < 0)
 		{
-			wl_ship->model_num = model_load(sip->pof_file, sip->n_subsystems, &sip->subsystems[0]);
+			if (sip->pof_file_tech[0] != '\0') {
+				wl_ship->model_num = model_load(sip->pof_file_tech, sip->n_subsystems, &sip->subsystems[0]);
+			}
+			else {
+				wl_ship->model_num = model_load(sip->pof_file, sip->n_subsystems, &sip->subsystems[0]);
+			}
 			model_page_in_textures(wl_ship->model_num, ship_class);
 		}
 		
 		if (wl_ship->model_num < 0)
 		{
-			mprintf(("Couldn't load model file in missionweaponchoice.cpp\n"));
+			mprintf(("Couldn't load model file '%s' in missionweaponchoice.cpp\n", sip->pof_file));
 		}
 		else
 		{
