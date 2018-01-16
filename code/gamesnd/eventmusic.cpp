@@ -35,7 +35,7 @@
 // Globals
 ////////////////////////////
 int Event_Music_battle_started = 0;
-float Default_music_volume = 0.5f;						// range is 0->1
+float Default_music_volume = 0.5f;							// range is 0->1
 float Master_event_music_volume = Default_music_volume;
 
 typedef struct tagSNDPATTERN {
