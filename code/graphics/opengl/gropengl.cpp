@@ -90,6 +90,8 @@ static GLenum GL_read_format = GL_BGRA;
 
 GLuint GL_vao = 0;
 
+bool GL_workaround_clipping_planes = false;
+
 static std::unique_ptr<os::OpenGLContext> GL_context = nullptr;
 
 static std::unique_ptr<os::GraphicsOperations> graphic_operations = nullptr;
@@ -399,27 +401,14 @@ void gr_opengl_cleanup(bool closing, int minimize)
 
 	opengl_tcache_flush();
 
-	opengl_minimize();
+	current_viewport = nullptr;
+
+	// All windows have to be closed before we destroy the OpenGL context
+	os::closeAllViewports();
 
 	gr_opengl_shutdown();
 
-	current_viewport = nullptr;
 	graphic_operations.reset();
-}
-
-void gr_opengl_fog_set(int fog_mode, int r, int g, int b, float fog_near, float fog_far)
-{
-//	mprintf(("gr_opengl_fog_set(%d,%d,%d,%d,%f,%f)\n",fog_mode,r,g,b,fog_near,fog_far));
-
-	Assert((r >= 0) && (r < 256));
-	Assert((g >= 0) && (g < 256));
-	Assert((b >= 0) && (b < 256));
-
-	if (fog_mode == GR_FOGMODE_NONE) {
-		gr_screen.current_fog_mode = fog_mode;
-
-		return;
-	}
 }
 
 int gr_opengl_set_cull(int cull)
@@ -515,16 +504,16 @@ int gr_opengl_stencil_set(int mode)
 
 	if ( mode == GR_STENCIL_READ ) {
 		GL_state.StencilTest(1);
-		GL_state.StencilFunc(GL_NEVER, 1, 0xFFFF);
+		GL_state.StencilFunc(GL_NOTEQUAL, 1, 0xFFFF);
 		GL_state.StencilOpSeparate(GL_FRONT_AND_BACK, GL_KEEP, GL_KEEP, GL_KEEP);
 	} else if ( mode == GR_STENCIL_WRITE ) {
 		GL_state.StencilTest(1);
-		GL_state.StencilFunc(GL_NOTEQUAL, 1, 0XFFFF);
-		GL_state.StencilOpSeparate(GL_FRONT_AND_BACK, GL_KEEP, GL_KEEP, GL_KEEP);
-	} else {
-		GL_state.StencilTest(0);
 		GL_state.StencilFunc(GL_ALWAYS, 1, 0xFFFF);
 		GL_state.StencilOpSeparate(GL_FRONT_AND_BACK, GL_KEEP, GL_KEEP, GL_REPLACE);
+	} else {
+		GL_state.StencilTest(0);
+		GL_state.StencilFunc(GL_NEVER, 1, 0xFFFF);
+		GL_state.StencilOpSeparate(GL_FRONT_AND_BACK, GL_KEEP, GL_KEEP, GL_KEEP);
 	}
 
 	return tmp;
@@ -1105,8 +1094,6 @@ void opengl_setup_function_pointers()
 
 	gr_screen.gf_set_gamma			= gr_opengl_set_gamma;
 
-	gr_screen.gf_fog_set			= gr_opengl_fog_set;
-
 	// UnknownPlayer : Don't recognize this - MAY NEED DEBUGGING
 	gr_screen.gf_get_region			= gr_opengl_get_region;
 
@@ -1163,6 +1150,7 @@ void opengl_setup_function_pointers()
 	gr_screen.gf_sphere				= gr_opengl_sphere;
 
 	gr_screen.gf_maybe_create_shader = gr_opengl_maybe_create_shader;
+	gr_screen.gf_recompile_all_shaders = gr_opengl_recompile_all_shaders;
 	gr_screen.gf_shadow_map_start	= gr_opengl_shadow_map_start;
 	gr_screen.gf_shadow_map_end		= gr_opengl_shadow_map_end;
 
@@ -1275,11 +1263,10 @@ static void APIENTRY debug_callback(GLenum source, GLenum type, GLuint id, GLenu
 	switch(severity) {
 		case GL_DEBUG_SEVERITY_HIGH_ARB:
 			severityStr = "High";
-			print_to_general_log = true; // High and medium messages are sent to the normal log for later troubleshooting
+			print_to_general_log = true; // High priority messages are sent to the normal log for later troubleshooting
 			break;
 		case GL_DEBUG_SEVERITY_MEDIUM_ARB:
 			severityStr = "Medium";
-			print_to_general_log = true;
 			break;
 		case GL_DEBUG_SEVERITY_LOW_ARB:
 			severityStr = "Low";
@@ -1378,6 +1365,19 @@ static void init_extensions() {
 	}
 }
 
+static void opengl_do_workaround_checks() {
+	auto vendor = glGetString(GL_VENDOR);
+
+	if (strstr((const char*) vendor, "NVIDIA")) {
+		// Nvidia has some weird issues with clipping planes. Check #1579 for more information.
+		GL_workaround_clipping_planes = true;
+		mprintf(("  Applying clipping plane workaround for NVIDIA hardware.\n"));
+	} else {
+		// Assume everone else has proper support for this
+		GL_workaround_clipping_planes = false;
+	}
+}
+
 bool gr_opengl_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps)
 {
 	if (GL_initted) {
@@ -1445,6 +1445,8 @@ bool gr_opengl_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps)
 	mprintf(( "  OpenGL Renderer  : %s\n", glGetString(GL_RENDERER) ));
 	mprintf(( "  OpenGL Version   : %s\n", glGetString(GL_VERSION) ));
 	mprintf(( "\n" ));
+
+	opengl_do_workaround_checks();
 
 	if (Cmdline_fullscreen_window || Cmdline_window) {
 		opengl_go_windowed();
@@ -1577,6 +1579,8 @@ bool gr_opengl_is_capable(gr_capability capability)
 		return !Cmdline_no_geo_sdr_effects;
 	case CAPABILITY_TIMESTAMP_QUERY:
 		return GLAD_GL_ARB_timer_query != 0; // Timestamp queries are available from 3.3 onwards
+	case CAPABILITY_SEPARATE_BLEND_FUNCTIONS:
+		return GLAD_GL_ARB_draw_buffers_blend != 0; // We need an OpenGL extension for this
 	}
 
 	return false;

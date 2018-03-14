@@ -11,6 +11,24 @@ namespace graphics {
  * Read the OpenGL specification for the exact layout and padding rules.
  */
 
+struct deferred_global_data {
+	matrix4 shadow_mv_matrix;
+	matrix4 shadow_proj_matrix[4];
+
+	matrix4 inv_view_matrix;
+
+	float veryneardist;
+	float neardist;
+	float middist;
+	float fardist;
+
+	float specFactor;
+	float invScreenWidth;
+	float invScreenHeight;
+
+	float pad;
+};
+
 /**
  * @brief Data for one deferred light rendering call
  */
@@ -27,9 +45,12 @@ struct deferred_light_data {
 	vec3d scale;
 	float lightRadius;
 
+	vec3d lightDir;
 	int lightType;
 
-	int pad0[3]; // Struct size must be 16-bytes aligned because we use vec3s
+	int enable_shadows;
+
+	float pad0[3]; // Struct size must be 16-bytes aligned because we use vec3s
 };
 
 struct model_light {
@@ -158,9 +179,11 @@ struct decal_globals {
 	matrix4 invViewMatrix;
 	matrix4 invProjMatrix;
 
-	vec2d viewportSize;
+	vec3d ambientLight;
+	float pad0;
 
-	float pad[2];
+	vec2d viewportSize;
+	float pad1[2];
 };
 
 struct decal_info {
@@ -171,13 +194,15 @@ struct decal_info {
 	float normal_angle_cutoff;
 
 	int diffuse_index;
+	int glow_index;
 	int normal_index;
 	float angle_fade_start;
+
 	float alpha_scale;
+	int diffuse_blend_mode;
+	int glow_blend_mode;
 
-	int blend_mode;
-
-	float pad[3];
+	float pad;
 };
 
 }

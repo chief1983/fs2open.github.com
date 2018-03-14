@@ -75,6 +75,7 @@ extern Category DrawMotionDebris;
 extern Category DrawBackground;
 extern Category DrawSuns;
 extern Category DrawBitmaps;
+extern Category SunspotProcess;
 
 extern Category RepeatingEvents;
 extern Category NonrepeatingEvents;
@@ -96,8 +97,18 @@ extern Category RenderMainFrame;
 extern Category RenderHUD;
 extern Category RenderHUDHook;
 extern Category RenderHUDGauge;
+extern Category RenderTargettingBracket;
+extern Category RenderNavBracket;
 extern Category MainFrame;
 extern Category PageFlip;
+
+extern Category NanoVGFlushFrame;
+extern Category NanoVGDrawFill;
+extern Category NanoVGDrawConvexFill;
+extern Category NanoVGDrawStroke;
+extern Category NanoVGDrawTriangles;
+
+extern Category LineDrawListFlush;
 
 extern Category CutsceneStep;
 extern Category CutsceneDrawVideoFrame;
@@ -132,6 +143,10 @@ extern Category WeaponPageIn;
 
 extern Category RenderDecals;
 extern Category RenderSingleDecal;
+
+extern Category GpuHeapAllocate;
+extern Category GpuHeapDeallocate;
+
 }
 
 #endif // _TRACING_CATEGORIES_H

@@ -1914,14 +1914,15 @@ int bm_load_sub_slow(const char *real_filename, const int num_ext, const char **
 	char full_path[MAX_PATH];
 	size_t size = 0, offset = 0;
 	int rval = -1;
+	const void* file_data = nullptr;
 
-	rval = cf_find_file_location_ext(real_filename, num_ext, ext_list, dir_type, sizeof(full_path) - 1, full_path, &size, &offset, 0);
+	rval = cf_find_file_location_ext(real_filename, num_ext, ext_list, dir_type, sizeof(full_path) - 1, full_path, &size, &offset, 0, &file_data);
 
 	// could not be found, or is invalid for some reason
 	if ((rval < 0) || (rval >= num_ext))
 		return -1;
 
-	CFILE *test = cfopen_special(full_path, "rb", size, offset, dir_type);
+	CFILE *test = cfopen_special(full_path, "rb", size, offset, file_data, dir_type);
 
 	if (test != NULL) {
 		if (img_cfp != NULL)
@@ -3383,4 +3384,39 @@ bool bm_validate_filename(const SCP_string& file, bool single_frame, bool animat
 		return true;
 	}
 	return false;
+}
+SDL_Surface* bm_to_sdl_surface(int handle) {
+	Assertion(bm_is_valid(handle), "%d is no valid bitmap handle!", handle);
+
+	int w;
+	int h;
+
+	bm_get_info(handle, &w, &h, nullptr, nullptr);
+	Uint32 rmask, gmask, bmask, amask;
+
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	rmask = 0x0000ff00;
+		gmask = 0x00ff0000;
+		bmask = 0xff000000;
+		amask = 0x000000ff;
+#else
+	rmask = 0x00ff0000;
+	gmask = 0x0000ff00;
+	bmask = 0x000000ff;
+	amask = 0xff000000;
+#endif
+
+	SDL_Surface* bitmapSurface = SDL_CreateRGBSurface(0, w, h, 32, rmask, gmask, bmask, amask);
+	if (SDL_LockSurface(bitmapSurface) < 0) {
+		return nullptr;
+	}
+	bitmap* bmp = bm_lock(handle, 32, BMP_TEX_XPARENT);
+
+	memcpy(bitmapSurface->pixels, reinterpret_cast<void*>(bmp->data), static_cast<size_t>(w * h * 4));
+
+	bm_unlock(handle);
+	SDL_UnlockSurface(bitmapSurface);
+
+	return bitmapSurface;
+
 }

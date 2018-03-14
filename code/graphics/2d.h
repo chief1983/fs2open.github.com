@@ -26,6 +26,7 @@
 namespace graphics {
 namespace util {
 class UniformBuffer;
+class GPUMemoryHeap;
 }
 }
 
@@ -159,6 +160,7 @@ enum shader_type {
 	SDR_TYPE_DEFAULT_MATERIAL,
 	SDR_TYPE_NANOVG,
 	SDR_TYPE_DECAL,
+	SDR_TYPE_SCENE_FOG,
 	NUM_SHADER_TYPES
 };
 
@@ -201,6 +203,7 @@ enum class uniform_block_type {
 	NanoVGData = 2,
 	DecalInfo = 3,
 	DecalGlobals = 4,
+	DeferredGlobals = 5,
 
 	NUM_BLOCK_TYPES
 };
@@ -214,6 +217,7 @@ struct vertex_format_data
 		SCREEN_POS,
 		COLOR3,
 		COLOR4,
+		COLOR4F,
 		TEX_COORD2,
 		TEX_COORD3,
 		NORMAL,
@@ -281,6 +285,7 @@ typedef enum gr_capability {
 	CAPABILITY_BATCHED_SUBMODELS,
 	CAPABILITY_POINT_PARTICLES,
 	CAPABILITY_TIMESTAMP_QUERY,
+	CAPABILITY_SEPARATE_BLEND_FUNCTIONS,
 } gr_capability;
 
 enum class gr_property {
@@ -544,20 +549,18 @@ public:
 };
 
 struct indexed_vertex_source {
-	void *Vertex_list;
-	void *Index_list;
+	void *Vertex_list = nullptr;
+	void *Index_list = nullptr;
 
-	int Vbuffer_handle;
-	int Ibuffer_handle;
+	int Vbuffer_handle = -1;
+	size_t Vertex_offset = 0;
+	size_t Base_vertex_offset = 0;
 
-	uint Vertex_list_size;
-	uint Index_list_size;
+	int Ibuffer_handle = -1;
+	size_t Index_offset = 0;
 
-	indexed_vertex_source() :
-		Vertex_list(NULL), Index_list(NULL),
-		Vbuffer_handle(-1), Ibuffer_handle(-1), Vertex_list_size(0), Index_list_size(0)
-	{
-	}
+	uint Vertex_list_size = 0;
+	uint Index_list_size = 0;
 };
 
 struct light;
@@ -631,7 +634,6 @@ typedef struct screen {
 
 	int		current_alphablend_mode;		// See GR_ALPHABLEND defines above
 	int		current_bitblt_mode;				// See GR_BITBLT_MODE defines above
-	int		current_fog_mode;					// See GR_FOGMODE_* defines above
 	int		current_bitmap;
 	color		current_color;
 	color		current_fog_color;				// current fog color
@@ -694,9 +696,6 @@ typedef struct screen {
 	// grab a region of the screen. assumes data is large enough
 	void (*gf_get_region)(int front, int w, int h, ubyte *data);
 
-	// set fog attributes
-	void (*gf_fog_set)(int fog_mode, int r, int g, int b, float fog_near, float fog_far);
-
 	// poly culling
 	int (*gf_set_cull)(int cull);
 
@@ -757,7 +756,8 @@ typedef struct screen {
 
 	void (*gf_sphere)(material *material_def, float rad);
 
-	int (*gf_maybe_create_shader)(shader_type type, unsigned int flags);
+	int  (*gf_maybe_create_shader)(shader_type type, unsigned int flags);
+	void (*gf_recompile_all_shaders)(std::function<void(size_t, size_t)>progress_callback);
 
 	void (*gf_clear_states)();
 
@@ -928,11 +928,6 @@ void gr_shield_icon(coord2d coords[6], const int resize_mode = GR_RESIZE_FULL);
 
 #define gr_get_region		GR_CALL(gr_screen.gf_get_region)
 
-__inline void gr_fog_set(int fog_mode, int r, int g, int b, float fog_near = -1.0f, float fog_far = -1.0f)
-{
-	(*gr_screen.gf_fog_set)(fog_mode, r, g, b, fog_near, fog_far);
-}
-
 #define gr_set_cull			GR_CALL(gr_screen.gf_set_cull)
 #define gr_set_color_buffer	GR_CALL(gr_screen.gf_set_color_buffer)
 
@@ -997,6 +992,7 @@ inline void gr_post_process_restore_zbuffer() {
 #define gr_sphere						GR_CALL(*gr_screen.gf_sphere)
 
 #define gr_maybe_create_shader			GR_CALL(*gr_screen.gf_maybe_create_shader)
+#define gr_recompile_all_shaders		GR_CALL(*gr_screen.gf_recompile_all_shaders)
 #define gr_set_animated_effect			GR_CALL(*gr_screen.gf_set_animated_effect)
 
 #define gr_clear_states					GR_CALL(*gr_screen.gf_clear_states)
@@ -1227,6 +1223,30 @@ struct DisplayData {
 };
 
 SCP_vector<DisplayData> gr_enumerate_displays();
+
+enum class GpuHeap {
+	ModelVertex = 0,
+	ModelIndex,
+
+	NUM_VALUES
+};
+
+/**
+ * @brief Allocates storage on the specified GPU heap and stores data in that storage
+ * @param heap_type The heap type to store this memory on
+ * @param size The size of the data
+ * @param data A pointer to the data
+ * @param[out] offset_out The offset at which the data is stored in the buffer
+ * @param[out] handle_out The handle of the buffer object this data is stored in
+ */
+void gr_heap_allocate(GpuHeap heap_type, size_t size, void* data, size_t& offset_out, int& handle_out);
+
+/**
+ * @brief Deallocates memory previously allocated with gr_heap_allocate.
+ * @param heap_type The heap type to deallocate this memory from
+ * @param data_offset The offset at which the data is stored.
+ */
+void gr_heap_deallocate(GpuHeap heap_type, size_t data_offset);
 
 // Include this last to make the 2D rendering function available everywhere
 #include "graphics/render.h"

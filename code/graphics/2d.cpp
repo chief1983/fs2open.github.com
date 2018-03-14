@@ -31,6 +31,7 @@
 #include "graphics/opengl/gropengldraw.h"
 #include "graphics/grstub.h"
 #include "graphics/paths/PathRenderer.h"
+#include "graphics/util/GPUMemoryHeap.h"
 #include "graphics/util/UniformBuffer.h"
 #include "graphics/util/UniformBufferManager.h"
 #include "io/keycontrol.h" // m!m
@@ -106,6 +107,9 @@ bool Save_custom_screen_size;
 static void uniform_buffer_managers_init();
 static void uniform_buffer_managers_deinit();
 static void uniform_buffer_managers_retire_buffers();
+
+static void gpu_heap_init();
+static void gpu_heap_deinit();
 
 void gr_set_screen_scale(int w, int h, int zoom_w, int zoom_h, int max_w, int max_h, int center_w, int center_h, bool force_stretch)
 {
@@ -646,6 +650,8 @@ void gr_close()
 		return;
 	}
 
+	gpu_heap_deinit();
+
 	// Cleanup uniform buffer managers
 	uniform_buffer_managers_deinit();
 	
@@ -893,6 +899,40 @@ static bool gr_init_sub(std::unique_ptr<os::GraphicsOperations>&& graphicsOps, i
 	return true;
 }
 
+static void init_window_icon() {
+	auto view = os::getMainViewport();
+
+	if (view == nullptr) {
+		// Graphics backend has no viewport
+		return;
+	}
+
+	auto sdl_wnd = view->toSDLWindow();
+
+	if (sdl_wnd == nullptr) {
+		// No support for changing the icon
+		return;
+	}
+
+	auto icon_handle = bm_load(Window_icon_path);
+	if (icon_handle < 0) {
+		Warning(LOCATION, "Failed to load window icon '%s'!", Window_icon_path.c_str());
+		return;
+	}
+
+	auto surface = bm_to_sdl_surface(icon_handle);
+	if (surface == nullptr) {
+		Warning(LOCATION, "Convert icon '%s' to a SDL surface!", Window_icon_path.c_str());
+		bm_release(icon_handle);
+		return;
+	}
+
+	SDL_SetWindowIcon(sdl_wnd, surface);
+
+	SDL_FreeSurface(surface);
+	bm_release(icon_handle);
+}
+
 bool gr_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps, int d_mode, int d_width, int d_height, int d_depth)
 {
 	int width = 1024, height = 768, depth = 32, mode = GR_OPENGL;
@@ -1073,6 +1113,9 @@ bool gr_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps, int d_mode, 
 	gr_set_palette_internal(Gr_current_palette_name, NULL, 0);
 
 	bm_init();
+
+	init_window_icon();
+
 	io::mouse::CursorManager::init();
 
 	mprintf(("Initializing path renderer...\n"));
@@ -1080,6 +1123,8 @@ bool gr_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps, int d_mode, 
 
 	// Initialize uniform buffer managers
 	uniform_buffer_managers_init();
+
+	gpu_heap_init();
 
 	bool missing_installation = false;
 	if (!running_unittests && Web_cursor == nullptr) {
@@ -2126,110 +2171,6 @@ void gr_flip(bool execute_scripting)
 	gr_screen.gf_flip();
 }
 
-uint gr_determine_model_shader_flags(
-	bool lighting, 
-	bool fog, 
-	bool textured, 
-	bool in_shadow_map, 
-	bool thruster_scale, 
-	bool transform,
-	bool team_color_set,
-	int tmap_flags, 
-	int spec_map, 
-	int glow_map, 
-	int normal_map, 
-	int height_map,
-	int ambient_map,
-	int env_map,
-	int misc_map
-) {
-	uint shader_flags = 0;
-
-	shader_flags |= SDR_FLAG_MODEL_CLIP;
-
-	if ( transform ) {
-		shader_flags |= SDR_FLAG_MODEL_TRANSFORM;
-	}
-
-	if ( in_shadow_map ) {
-		// if we're building the shadow map, we likely only need the flags here and above so bail
-		shader_flags |= SDR_FLAG_MODEL_SHADOW_MAP;
-
-		return shader_flags;
-	}
-
-	// setup shader flags for the things that we want/need
-	if ( lighting ) {
-		shader_flags |= SDR_FLAG_MODEL_LIGHT;
-	}
-
-	if ( fog ) {
-		shader_flags |= SDR_FLAG_MODEL_FOG;
-	}
-
-	if ( tmap_flags & TMAP_ANIMATED_SHADER ) {
-		shader_flags |= SDR_FLAG_MODEL_ANIMATED;
-	}
-
-	if ( textured ) {
-		if ( !Basemap_override ) {
-			shader_flags |= SDR_FLAG_MODEL_DIFFUSE_MAP;
-		}
-
-		if ( glow_map > 0 ) {
-			shader_flags |= SDR_FLAG_MODEL_GLOW_MAP;
-		}
-
-		if ( lighting ) {
-			if ( ( spec_map > 0 ) && !Specmap_override ) {
-				shader_flags |= SDR_FLAG_MODEL_SPEC_MAP;
-
-				if ( ( env_map > 0 ) && !Envmap_override ) {
-					shader_flags |= SDR_FLAG_MODEL_ENV_MAP;
-				}
-			}
-
-			if ( ( normal_map > 0) && !Normalmap_override ) {
-				shader_flags |= SDR_FLAG_MODEL_NORMAL_MAP;
-			}
-
-			if ( ( height_map > 0) && !Heightmap_override ) {
-				shader_flags |= SDR_FLAG_MODEL_HEIGHT_MAP;
-			}
-
-			if ( ambient_map > 0 ) {
-				shader_flags |= SDR_FLAG_MODEL_AMBIENT_MAP;
-			}
-
-			if ( Cmdline_shadow_quality && !in_shadow_map && !Shadow_override) {
-				shader_flags |= SDR_FLAG_MODEL_SHADOWS;
-			}
-		}
-
-		if ( misc_map > 0 ) {
-			shader_flags |= SDR_FLAG_MODEL_MISC_MAP;
-		}
-
-		if ( team_color_set ) {
-			shader_flags |= SDR_FLAG_MODEL_TEAMCOLOR;
-		}
-	}
-
-	if ( Deferred_lighting ) {
-		shader_flags |= SDR_FLAG_MODEL_DEFERRED;
-	}
-
-	if ( thruster_scale ) {
-		shader_flags |= SDR_FLAG_MODEL_THRUSTER;
-	}
-
-	if ( High_dynamic_range ) {
-		shader_flags |= SDR_FLAG_MODEL_HDR;
-	}
-
-	return shader_flags;
-}
-
 void gr_print_timestamp(int x, int y, fix timestamp, int resize_mode)
 {
 	int seconds = fl2i(f2fl(timestamp));
@@ -2391,4 +2332,43 @@ size_t vertex_layout::hash() const {
 	}
 
 	return seed;
+}
+
+static std::unique_ptr<graphics::util::GPUMemoryHeap> gpu_heaps [static_cast<size_t>(GpuHeap::NUM_VALUES)];
+
+static void gpu_heap_init() {
+	for (size_t i = 0; i < static_cast<size_t>(GpuHeap::NUM_VALUES); ++i) {
+		auto enumVal = static_cast<GpuHeap>(i);
+
+		gpu_heaps[i].reset(new graphics::util::GPUMemoryHeap(enumVal));
+	}
+}
+
+static void gpu_heap_deinit() {
+	for (auto& heap : gpu_heaps) {
+		heap.reset();
+	}
+}
+
+static graphics::util::GPUMemoryHeap* get_gpu_heap(GpuHeap heap_type) {
+	Assertion(heap_type != GpuHeap::NUM_VALUES, "Invalid heap type value detected.");
+
+	return gpu_heaps[static_cast<size_t>(heap_type)].get();
+}
+
+void gr_heap_allocate(GpuHeap heap_type, size_t size, void* data, size_t& offset_out, int& handle_out) {
+	TRACE_SCOPE(tracing::GpuHeapAllocate);
+
+	auto gpuHeap = get_gpu_heap(heap_type);
+
+	offset_out = gpuHeap->allocateGpuData(size, data);
+	handle_out = gpuHeap->bufferHandle();
+}
+
+void gr_heap_deallocate(GpuHeap heap_type, size_t data_offset) {
+	TRACE_SCOPE(tracing::GpuHeapDeallocate);
+
+	auto gpuHeap = get_gpu_heap(heap_type);
+
+	gpuHeap->freeGpuData(data_offset);
 }
