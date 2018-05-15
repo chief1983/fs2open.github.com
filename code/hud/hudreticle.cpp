@@ -253,7 +253,7 @@ void HudGaugeReticle::render(float  /*frametime*/)
 {
 	ship_info *sip = &Ship_info[Player_ship->ship_info_index];
 
-	if (autoaim_frame_offset > 0 || sip->autoaim_lock_snd > -1 || sip->autoaim_lost_snd > -1) {
+	if (autoaim_frame_offset > 0 || sip->autoaim_lock_snd.isValid() || sip->autoaim_lost_snd.isValid()) {
 		ship *shipp = &Ships[Objects[Player->objnum].instance];
 		ship_weapon	*swp = &shipp->weapons;
 		ai_info *aip = &Ai_info[shipp->ai_index];
@@ -264,14 +264,14 @@ void HudGaugeReticle::render(float  /*frametime*/)
 			autoaiming = in_autoaim_fov(shipp, swp->current_primary_bank, &Objects[aip->target_objnum]);
 
 			if (autoaiming) {
-				if (!has_autoaim_lock && sip->autoaim_lock_snd > -1) {
-					snd_play( &Snds[sip->autoaim_lock_snd]);
+				if (!has_autoaim_lock && sip->autoaim_lock_snd.isValid()) {
+					snd_play( gamesnd_get_game_sound(sip->autoaim_lock_snd) );
 				}
 				has_autoaim_lock = true;
 			}
 			else {
-				if (has_autoaim_lock && sip->autoaim_lost_snd > -1) {
-					snd_play( &Snds[sip->autoaim_lost_snd]);
+				if (has_autoaim_lock && sip->autoaim_lost_snd.isValid()) {
+					snd_play( gamesnd_get_game_sound(sip->autoaim_lost_snd) );
 				}
 				has_autoaim_lock = false;
 			}

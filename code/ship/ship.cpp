@@ -1758,8 +1758,8 @@ ship_info::ship_info()
 	newtonian_damp_override = false;
 
 	autoaim_fov = 0.0f;
-	autoaim_lock_snd = -1;
-	autoaim_lost_snd = -1;
+	autoaim_lock_snd = gamesnd_id();
+	autoaim_lost_snd = gamesnd_id();
 
 	topdown_offset_def = false;
 	vm_vec_zero(&topdown_offset);
@@ -2922,8 +2922,8 @@ static int parse_ship_values(ship_info* sip, const bool is_template, const bool 
 		if(optional_string("+Minimum Distance:"))
 			stuff_float(&sip->minimum_convergence_distance);
 
-		parse_sound("+Autoaim Lock Snd:", &sip->autoaim_lock_snd, sip->name);
-		parse_sound("+Autoaim Lost Snd:", &sip->autoaim_lost_snd, sip->name);
+		parse_game_sound("+Autoaim Lock Snd:", &sip->autoaim_lock_snd);
+		parse_game_sound("+Autoaim Lost Snd:", &sip->autoaim_lost_snd);
 	}
 
 	if(optional_string("$Convergence:"))

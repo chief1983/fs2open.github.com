@@ -1196,7 +1196,7 @@ public:
 	float minimum_convergence_distance;
 	float convergence_distance;
 	vec3d convergence_offset;
-	int autoaim_lock_snd, autoaim_lost_snd;
+	gamesnd_id autoaim_lock_snd, autoaim_lost_snd;
 
 	float emp_resistance_mod;
 
