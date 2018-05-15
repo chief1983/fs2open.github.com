@@ -39,8 +39,8 @@
 #include <dirent.h>
 #endif
 
-#include <string.h>
-#include <stdlib.h>
+#include <cstring>
+#include <cstdlib>
 #include <cstdio>
 
 #include <jansson.h>
@@ -333,6 +333,7 @@ cmdline_parm flightshaftsoff_arg("-nolightshafts", NULL, AT_NONE);
 cmdline_parm shadow_quality_arg("-shadow_quality", NULL, AT_INT);
 cmdline_parm enable_shadows_arg("-enable_shadows", NULL, AT_NONE);
 cmdline_parm no_deferred_lighting_arg("-no_deferred", NULL, AT_NONE);	// Cmdline_no_deferred
+cmdline_parm anisotropy_level_arg("-anisotropic_filter", NULL, AT_INT);
 
 float Cmdline_clip_dist = Default_min_draw_distance;
 float Cmdline_fov = 0.75f;
@@ -359,6 +360,7 @@ bool Cmdline_fb_thrusters = false;
 extern bool ls_force_off;
 int Cmdline_shadow_quality = 0;
 int Cmdline_no_deferred_lighting = 0;
+int Cmdline_aniso_level = 0;
 
 // Game Speed related
 cmdline_parm cache_bitmaps_arg("-cache_bitmaps", NULL, AT_NONE);	// Cmdline_cache_bitmaps
@@ -816,7 +818,7 @@ void os_validate_parms(int argc, char *argv[])
 					size_t sp = 0;
 					for (parmp = GET_FIRST(&Parm_list); parmp !=END_OF_LIST(&Parm_list); parmp = GET_NEXT(parmp) ) {
 						// don't output deprecated flags
-						if (stricmp("deprecated", parmp->help)) {
+						if (stricmp("deprecated", parmp->help) != 0) {
 							sp = strlen(parmp->name);
 							if (parmp->arg_type != AT_NONE) {
 								atp = strlen(cmdline_arg_types[parmp->arg_type]);
@@ -1165,7 +1167,7 @@ bool cmdline_parm::has_param() {
 #ifdef SCP_UNIX
 // Return a vector with all filesystem names of "parent/dir" relative to parent.
 // dir must not contain a slash.
-static SCP_vector<SCP_string> unix_get_single_dir_names(SCP_string parent, SCP_string dir)
+static SCP_vector<SCP_string> unix_get_single_dir_names(const SCP_string& parent, const SCP_string& dir)
 {
 	SCP_vector<SCP_string> ret;
 
@@ -1188,7 +1190,7 @@ static SCP_vector<SCP_string> unix_get_single_dir_names(SCP_string parent, SCP_s
 
 // Return a vector with all filesystem names of "parent/dir" relative to parent.
 // Recurses to deal with slashes in dir.
-static SCP_vector<SCP_string> unix_get_dir_names(SCP_string parent, SCP_string dir)
+static SCP_vector<SCP_string> unix_get_dir_names(const SCP_string& parent, const SCP_string& dir)
 {
 	size_t slash = dir.find_first_of("/\\");
 
@@ -1388,6 +1390,15 @@ static json_t* json_get_v1() {
 			}
 
 			json_object_set_new(openal_obj, "capture_devices", capture_array);
+		}
+		{
+			auto efx_support_obj = json_object();
+
+			for (auto& pair : openal_info.efx_support) {
+				json_object_set_new(efx_support_obj, pair.first.c_str(), json_boolean(pair.second));
+			}
+
+			json_object_set_new(openal_obj, "efx_support", efx_support_obj);
 		}
 
 		json_object_set_new(root, "openal", openal_obj);
@@ -2051,6 +2062,11 @@ bool SetCmdlineParams()
 	if( no_deferred_lighting_arg.found() )
 	{
 		Cmdline_no_deferred_lighting = 1;
+	}
+
+	if (anisotropy_level_arg.found()) 
+	{
+		Cmdline_aniso_level = anisotropy_level_arg.get_int();
 	}
 
 	if (frame_profile_write_file.found())

@@ -365,7 +365,7 @@ class poly_list {
 public:
 	poly_list(): n_verts(0), vert(NULL), norm(NULL), tsb(NULL), submodels(NULL), sorted_indices(NULL), currently_allocated(0) {}
 	~poly_list();
-	poly_list& operator = (poly_list&);
+	poly_list& operator=(const poly_list&);
 
 	void allocate(int size);
 	void make_index_buffer(SCP_vector<int> &vertex_list);
@@ -757,7 +757,7 @@ typedef struct screen {
 	void (*gf_sphere)(material *material_def, float rad);
 
 	int  (*gf_maybe_create_shader)(shader_type type, unsigned int flags);
-	void (*gf_recompile_all_shaders)(std::function<void(size_t, size_t)>progress_callback);
+	void (*gf_recompile_all_shaders)(const std::function<void(size_t, size_t)>& progress_callback);
 
 	void (*gf_clear_states)();
 

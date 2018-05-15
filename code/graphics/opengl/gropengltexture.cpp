@@ -146,11 +146,11 @@ void opengl_tcache_init()
 	// anisotropy
 	if ( GLAD_GL_EXT_texture_filter_anisotropic ) {
 		// set max value first thing
-		opengl_get_max_anisotropy();
+		GL_anisotropy = opengl_get_max_anisotropy();
 
 		// now for the user setting
-		const char *plevel = os_config_read_string( NULL, NOX("OGL_AnisotropicFilter"), NOX("1.0") );
-		GL_anisotropy = (GLfloat) strtod(plevel, (char**)NULL);
+		if (Cmdline_aniso_level != 0)
+			GL_anisotropy = (GLfloat) Cmdline_aniso_level;
 
 		CLAMP(GL_anisotropy, 1.0f, GL_max_anisotropy);
 	}
@@ -308,7 +308,7 @@ int opengl_texture_set_level(int bitmap_handle,
 							 int tex_h,
 							 ubyte* data,
 							 tcache_slot_opengl* tSlot,
-							 int base_level,
+							 int  /*base_level*/,
 							 bool resize,
 							 GLenum intFormat)
 {
@@ -403,34 +403,13 @@ int opengl_texture_set_level(int bitmap_handle,
 	switch (bitmap_type) {
 		case TCACHE_TYPE_COMPRESSED: {
 			if (block_size > 0) {
-				// size of data block (4x4)
-				dsize = ((mipmap_h + 3) / 4) * ((mipmap_w + 3) / 4) * block_size;
+				for (auto i = 0; i < mipmap_levels; i++) {
 
-				// if we are skipping mipmap levels in order to resize then we have to calc the new offset
-				doffset = 0;
-				for (auto i = 0; i < base_level; i++) {
-					doffset += dsize;
-
-					mipmap_w >>= 1;
-					mipmap_h >>= 1;
-
-					if (mipmap_w <= 0) {
-						mipmap_w = 1;
-					}
-
-					if (mipmap_h <= 0) {
-						mipmap_h = 1;
-					}
-
+					// size of data block (4x4)
 					dsize = ((mipmap_h + 3) / 4) * ((mipmap_w + 3) / 4) * block_size;
-				}
 
-				skip_size = doffset;
+					glCompressedTexSubImage3D(tSlot->texture_target, i, 0, 0, tSlot->array_index, mipmap_w, mipmap_h, 1, intFormat, dsize, bmp_data + doffset);
 
-				glCompressedTexSubImage3D(tSlot->texture_target, 0, 0, 0, tSlot->array_index, mipmap_w, mipmap_h, 1, intFormat, dsize, bmp_data + doffset);
-
-				// now that the base image is done handle any mipmap levels
-				for (auto i = 1; i < (mipmap_levels - base_level); i++) {
 					// adjust the data offset for the next block
 					doffset += dsize;
 
@@ -445,11 +424,6 @@ int opengl_texture_set_level(int bitmap_handle,
 					if (mipmap_h <= 0) {
 						mipmap_h = 1;
 					}
-
-					// size of data block (4x4)
-					dsize = ((mipmap_h + 3) / 4) * ((mipmap_w + 3) / 4) * block_size;
-
-					glCompressedTexSubImage3D(tSlot->texture_target, i, 0, 0, tSlot->array_index, mipmap_w, mipmap_h, 1, intFormat, dsize, bmp_data + doffset);
 				}
 			} else {
 				Int3();
@@ -644,13 +618,16 @@ int opengl_texture_set_level(int bitmap_handle,
 				Assert( texmem == NULL );
 			}
 
-			dsize = mipmap_h * mipmap_w * byte_mult;
+			for (auto i = 0; i < mipmap_levels; i++) {
+				// size of data block (4x4)
+				dsize = mipmap_h * mipmap_w * byte_mult;
 
-			// if we are skipping mipmap levels in order to resize then we have to calc the new offset
-			doffset = 0;
-			for (auto i = 0; i < base_level; i++) {
+				glTexSubImage3D (tSlot->texture_target, i, 0, 0, tSlot->array_index, mipmap_w, mipmap_h, 1, glFormat, texFormat, (texmem != NULL) ? texmem : bmp_data + doffset);
+
+				// adjust the data offset for the next block
 				doffset += dsize;
 
+				// reduce size by half for the next pass
 				mipmap_w >>= 1;
 				mipmap_h >>= 1;
 
@@ -661,31 +638,6 @@ int opengl_texture_set_level(int bitmap_handle,
 				if (mipmap_h <= 0) {
 					mipmap_h = 1;
 				}
-
-				dsize = mipmap_h * mipmap_w * byte_mult;
-			}
-
-			skip_size = doffset;
-
-			glTexSubImage3D (tSlot->texture_target, 0, 0, 0, tSlot->array_index, mipmap_w, mipmap_h, 1, glFormat, texFormat, (texmem != NULL) ? texmem : bmp_data + doffset);
-
-			// base image is done so now take care of any mipmap levels
-			for (auto i = 1; i < (mipmap_levels - base_level); i++) {
-				doffset += dsize;
-				mipmap_w >>= 1;
-				mipmap_h >>= 1;
-
-				if (mipmap_w <= 0) {
-					mipmap_w = 1;
-				}
-
-				if (mipmap_h <= 0) {
-					mipmap_h = 1;
-				}
-
-				dsize = mipmap_h * mipmap_w * byte_mult;
-
-				glTexSubImage3D (tSlot->texture_target, i, 0, 0, tSlot->array_index, mipmap_w, mipmap_h, 1, glFormat, texFormat, bmp_data + doffset);
 			}
 
 			if (texmem != NULL) {
@@ -972,6 +924,9 @@ int opengl_create_texture(int bitmap_handle, int bitmap_type, tcache_slot_opengl
 		}
 	}
 
+	if (base_level != 0) {
+		glTexParameteri(tslot->texture_target, GL_TEXTURE_BASE_LEVEL, base_level);
+	}
 	glTexParameteri(tslot->texture_target, GL_TEXTURE_MAX_LEVEL, mipmap_levels);
 	glTexParameteri(tslot->texture_target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(tslot->texture_target, GL_TEXTURE_MIN_FILTER, min_filter);
@@ -1757,7 +1712,7 @@ int opengl_set_render_target( int slot, int face, int is_static )
 	return 1;
 }
 
-int opengl_make_render_target( int handle, int slot, int *w, int *h, int *bpp, int *mm_lvl, int flags )
+int opengl_make_render_target( int  /*handle*/, int slot, int *w, int *h, int *bpp, int *mm_lvl, int flags )
 {
 	GR_DEBUG_SCOPE("Make OpenGL render target");
 
